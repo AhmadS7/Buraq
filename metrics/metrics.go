@@ -15,6 +15,24 @@ var (
 		[]string{"task_type", "status"}, // Status can be "success" or "error"
 	)
 
+	// TasksFailedTotal tracks the number of times a task processing attempt failed.
+	TasksFailedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "buraq_tasks_failed_total",
+			Help: "Total number of task processing failures (retries)",
+		},
+		[]string{"task_type"},
+	)
+
+	// TasksDLQTotal tracks the total number of tasks moved to the Dead-Letter Queue.
+	TasksDLQTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "buraq_tasks_dlq_total",
+			Help: "Total number of tasks moved to the DLQ stream after exhausted retries",
+		},
+		[]string{"task_type"},
+	)
+
 	// TaskDurationSeconds tracks the duration of task processing.
 	TaskDurationSeconds = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{

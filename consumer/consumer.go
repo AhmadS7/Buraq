@@ -129,6 +129,7 @@ func (c *Consumer) worker(ctx context.Context, wg *sync.WaitGroup, tasksCh <-cha
 }
 
 // processMessage extracts the task payload, processes it, records metrics, and acknowledges it.
+// If processing fails, it handles retries or routes the task to the DLQ.
 func (c *Consumer) processMessage(ctx context.Context, workerID int, msg redis.XMessage) {
 	startTime := time.Now()
 
@@ -146,21 +147,82 @@ func (c *Consumer) processMessage(ctx context.Context, workerID int, msg redis.X
 		return
 	}
 
-	log.Printf("Worker %d: Processing task %s (Type: %s)", workerID, t.ID, t.Type)
+	log.Printf("Worker %d: Processing task %s (Type: %s, Retry: %d/%d)", workerID, t.ID, t.Type, t.CurrentRetries, t.MaxRetries)
 
-	// Simulate work (e.g. sending an email, processing data)
-	time.Sleep(500 * time.Millisecond)
-
+	err = c.simulateWork(t)
 	duration := time.Since(startTime).Seconds()
-
-	// Record metrics
 	metrics.TaskDurationSeconds.WithLabelValues(t.Type).Observe(duration)
-	metrics.TasksProcessedTotal.WithLabelValues(t.Type, "success").Inc()
 
+	if err != nil {
+		log.Printf("Worker %d: Task %s failed: %v", workerID, t.ID, err)
+		metrics.TasksProcessedTotal.WithLabelValues(t.Type, "error").Inc()
+		metrics.TasksFailedTotal.WithLabelValues(t.Type).Inc()
+
+		c.handleTaskFailure(context.Background(), workerID, t, msg.ID, err)
+		return
+	}
+
+	// Success
+	metrics.TasksProcessedTotal.WithLabelValues(t.Type, "success").Inc()
 	log.Printf("Worker %d: Completed task %s in %.3fs", workerID, t.ID, duration)
 
 	// Acknowledge task inside background context to ensure it acks if main ctx is cancelled right after process
 	c.acknowledge(context.Background(), msg.ID)
+}
+
+func (c *Consumer) handleTaskFailure(ctx context.Context, workerID int, t *task.Task, originalMsgID string, processErr error) {
+	t.Error = processErr.Error()
+
+	if t.CurrentRetries < t.MaxRetries {
+		t.CurrentRetries++
+		log.Printf("Worker %d: Re-queueing task %s (Retry %d/%d)", workerID, t.ID, t.CurrentRetries, t.MaxRetries)
+
+		err := c.enqueueTask(ctx, c.stream, t)
+		if err != nil {
+			log.Printf("Worker %d: Failed to re-queue task %s: %v", workerID, t.ID, err)
+			return // Don't ack original if we failed to re-queue, let it sit in PEL
+		}
+	} else {
+		log.Printf("Worker %d: Task %s exceeded max retries. Moving to DLQ.", workerID, t.ID)
+		metrics.TasksDLQTotal.WithLabelValues(t.Type).Inc()
+
+		dlqStream := fmt.Sprintf("%s_dlq", c.stream)
+		err := c.enqueueTask(ctx, dlqStream, t)
+		if err != nil {
+			log.Printf("Worker %d: Failed to move task %s to DLQ: %v", workerID, t.ID, err)
+			return // Don't ack original if we failed to DLQ, let it sit in PEL
+		}
+	}
+
+	// Always ACK the original message if we successfully moved it (either retry or DLQ)
+	c.acknowledge(ctx, originalMsgID)
+}
+
+func (c *Consumer) enqueueTask(ctx context.Context, destStream string, t *task.Task) error {
+	data, err := t.Marshal()
+	if err != nil {
+		return err
+	}
+
+	args := &redis.XAddArgs{
+		Stream: destStream,
+		Values: map[string]interface{}{
+			"payload": data,
+		},
+	}
+
+	return c.client.XAdd(ctx, args).Err()
+}
+
+func (c *Consumer) simulateWork(t *task.Task) error {
+	time.Sleep(500 * time.Millisecond)
+
+	// Simulate a 20% failure rate for demonstration purposes
+	if time.Now().UnixNano()%5 == 0 {
+		return fmt.Errorf("simulated network timeout while calling external API")
+	}
+
+	return nil
 }
 
 func (c *Consumer) acknowledge(ctx context.Context, msgID string) {

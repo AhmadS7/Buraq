@@ -7,10 +7,13 @@ import (
 
 // Task represents a unit of work in Buraq.
 type Task struct {
-	ID        string          `json:"id"`
-	Type      string          `json:"type"`
-	Payload   json.RawMessage `json:"payload"`
-	CreatedAt time.Time       `json:"created_at"`
+	ID             string          `json:"id"`
+	Type           string          `json:"type"`
+	Payload        json.RawMessage `json:"payload"`
+	CreatedAt      time.Time       `json:"created_at"`
+	MaxRetries     int             `json:"max_retries"`
+	CurrentRetries int             `json:"current_retries"`
+	Error          string          `json:"error,omitempty"`
 }
 
 // Marshal converts the Task into a JSON byte slice.

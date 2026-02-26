@@ -89,10 +89,11 @@ func produceMockTasks(ctx context.Context, p *producer.Producer) {
 			return
 		case <-ticker.C:
 			t := &task.Task{
-				ID:        fmt.Sprintf("task-%d", taskCounter),
-				Type:      "email_notification",
-				Payload:   json.RawMessage(`{"user_id": 123, "template": "welcome"}`),
-				CreatedAt: time.Now().UTC(),
+				ID:         fmt.Sprintf("task-%d", taskCounter),
+				Type:       "email_notification",
+				Payload:    json.RawMessage(`{"user_id": 123, "template": "welcome"}`),
+				CreatedAt:  time.Now().UTC(),
+				MaxRetries: 3,
 			}
 
 			msgID, err := p.Produce(ctx, t)
