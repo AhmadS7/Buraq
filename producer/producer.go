@@ -3,7 +3,7 @@ package producer
 import (
 	"context"
 
-	"horus/task"
+	"buraq/task"
 
 	"github.com/redis/go-redis/v9"
 )

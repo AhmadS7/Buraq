@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Task represents a unit of work in Horus.
+// Task represents a unit of work in Buraq.
 type Task struct {
 	ID        string          `json:"id"`
 	Type      string          `json:"type"`

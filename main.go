@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"horus/consumer"
-	"horus/producer"
-	"horus/task"
+	"buraq/consumer"
+	"buraq/producer"
+	"buraq/task"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
@@ -55,8 +55,8 @@ func main() {
 		log.Println("Connected to Redis successfully.")
 	}
 
-	streamName := "horus_tasks"
-	groupName := "horus_workers"
+	streamName := "buraq_tasks"
+	groupName := "buraq_workers"
 	consumerName := "worker_node_1"
 
 	// Initialize Producer
@@ -68,12 +68,12 @@ func main() {
 	// Initialize and start Consumer with 5 workers
 	c := consumer.New(rdb, streamName, groupName, consumerName, 5)
 
-	log.Println("Starting Horus Consumer...")
+	log.Println("Starting Buraq Consumer...")
 	if err := c.Start(ctx); err != nil {
 		log.Fatalf("Consumer stopped with error: %v", err)
 	}
 
-	log.Println("Horus shutdown gracefully.")
+	log.Println("Buraq shutdown gracefully.")
 }
 
 func produceMockTasks(ctx context.Context, p *producer.Producer) {

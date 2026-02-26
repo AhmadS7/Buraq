@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"horus/metrics"
-	"horus/task"
+	"buraq/metrics"
+	"buraq/task"
 
 	"github.com/redis/go-redis/v9"
 )
