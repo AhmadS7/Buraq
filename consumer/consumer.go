@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -110,21 +111,15 @@ func (c *Consumer) worker(ctx context.Context, wg *sync.WaitGroup, tasksCh <-cha
 	for {
 		select {
 		case <-ctx.Done():
-			// Only allow clean shutdown via channel closure to finish pending tasks if desired,
-			// or stop immediately if context is done. We check both.
-			// In Go, if both ctx is done and channel has items, select is random.
-			// Let's rely on tasksCh reading directly until it's closed.
-			// Wait, if ctx is Done, fetcher stops and closes tasksCh.
-			// So we can just read from tasksCh and exit when it's closed.
-		}
-
-		msg, ok := <-tasksCh
-		if !ok {
-			log.Printf("Worker %d: stopped (channel closed)", id)
+			log.Printf("Worker %d: stopped (context cancelled)", id)
 			return
+		case msg, ok := <-tasksCh:
+			if !ok {
+				log.Printf("Worker %d: stopped (channel closed)", id)
+				return
+			}
+			c.processMessage(ctx, id, msg)
 		}
-
-		c.processMessage(ctx, id, msg)
 	}
 }
 
@@ -217,8 +212,8 @@ func (c *Consumer) enqueueTask(ctx context.Context, destStream string, t *task.T
 func (c *Consumer) simulateWork(t *task.Task) error {
 	time.Sleep(500 * time.Millisecond)
 
-	// Simulate a 20% failure rate for demonstration purposes
-	if time.Now().UnixNano()%5 == 0 {
+	// Simulate a 5% failure rate to demonstrate retry and DLQ logic
+	if rand.New(rand.NewSource(time.Now().UnixNano())).Float32() < 0.05 {
 		return fmt.Errorf("simulated network timeout while calling external API")
 	}
 
