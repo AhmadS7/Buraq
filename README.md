@@ -47,9 +47,6 @@ Buraq is a highly concurrent, resilient distributed task queue built with Go and
 
    To visualize your data natively over time via Grafana, open `http://localhost:3000` (Login: `admin` / `admin`). Set up a Prometheus connection to `http://prometheus:9090`.
 
-   **See a demo setup below:**
-   ![Grafana Walkthrough](assets/grafana_demo.webp)
-
 ## Documentation
 
 For a deep dive into the code configuration and reasoning, check out the `/docs` folder:
