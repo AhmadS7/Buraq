@@ -16,6 +16,13 @@ type Task struct {
 	Error          string          `json:"error,omitempty"`
 }
 
+// Event represents a state change for a task, broadcasted via Redis Pub/Sub.
+type Event struct {
+	Type     string `json:"type"` // Pending, Processing, Completed, Failed, DLQ
+	TaskID   string `json:"task_id"`
+	WorkerID string `json:"worker_id"` // Used by dashboard to animate the "worker map"
+}
+
 // Marshal converts the Task into a JSON byte slice.
 func (t *Task) Marshal() ([]byte, error) {
 	return json.Marshal(t)

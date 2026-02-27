@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -81,9 +82,13 @@ func (c *Consumer) fetchTasks(ctx context.Context, wg *sync.WaitGroup, tasksCh c
 
 			streams, err := c.client.XReadGroup(ctx, args).Result()
 			if err != nil {
-				if err != redis.Nil {
+				if err != redis.Nil && err != context.Canceled {
 					log.Printf("Error reading from Redis Stream: %v", err)
 					time.Sleep(1 * time.Second) // Backoff on error
+				}
+				if ctx.Err() != nil {
+					log.Println("Context cancelled during read, consumer fetcher stopping.")
+					return
 				}
 				continue
 			}
@@ -91,12 +96,9 @@ func (c *Consumer) fetchTasks(ctx context.Context, wg *sync.WaitGroup, tasksCh c
 			// Distribute tasks to workers via channel
 			for _, stream := range streams {
 				for _, msg := range stream.Messages {
-					select {
-					case tasksCh <- msg:
-					case <-ctx.Done():
-						log.Println("Context cancelled while distributing tasks.")
-						return
-					}
+					// We don't select on ctx.Done() here to ensure fetched tasks
+					// are distributed to workers' channel buffered/unbuffered so they don't get stuck in PEL if not necessary
+					tasksCh <- msg
 				}
 			}
 		}
@@ -108,19 +110,12 @@ func (c *Consumer) worker(ctx context.Context, wg *sync.WaitGroup, tasksCh <-cha
 	defer wg.Done()
 	log.Printf("Worker %d: started", id)
 
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("Worker %d: stopped (context cancelled)", id)
-			return
-		case msg, ok := <-tasksCh:
-			if !ok {
-				log.Printf("Worker %d: stopped (channel closed)", id)
-				return
-			}
-			c.processMessage(ctx, id, msg)
-		}
+	for msg := range tasksCh {
+		// Pass a detached context to processMessage so it finishes current work
+		c.processMessage(context.Background(), id, msg)
 	}
+
+	log.Printf("Worker %d: stopped gracefully", id)
 }
 
 // processMessage extracts the task payload, processes it, records metrics, and acknowledges it.
@@ -142,6 +137,13 @@ func (c *Consumer) processMessage(ctx context.Context, workerID int, msg redis.X
 		return
 	}
 
+	workerStrID := fmt.Sprintf("%s-%d", c.consumer, workerID)
+	c.publishEvent(ctx, task.Event{
+		Type:     "Processing",
+		TaskID:   t.ID,
+		WorkerID: workerStrID,
+	})
+
 	log.Printf("Worker %d: Processing task %s (Type: %s, Retry: %d/%d)", workerID, t.ID, t.Type, t.CurrentRetries, t.MaxRetries)
 
 	err = c.simulateWork(t)
@@ -153,7 +155,13 @@ func (c *Consumer) processMessage(ctx context.Context, workerID int, msg redis.X
 		metrics.TasksProcessedTotal.WithLabelValues(t.Type, "error").Inc()
 		metrics.TasksFailedTotal.WithLabelValues(t.Type).Inc()
 
-		c.handleTaskFailure(context.Background(), workerID, t, msg.ID, err)
+		c.publishEvent(ctx, task.Event{
+			Type:     "Failed",
+			TaskID:   t.ID,
+			WorkerID: workerStrID,
+		})
+
+		c.handleTaskFailure(context.Background(), workerID, t, msg.ID, err, workerStrID)
 		return
 	}
 
@@ -161,11 +169,17 @@ func (c *Consumer) processMessage(ctx context.Context, workerID int, msg redis.X
 	metrics.TasksProcessedTotal.WithLabelValues(t.Type, "success").Inc()
 	log.Printf("Worker %d: Completed task %s in %.3fs", workerID, t.ID, duration)
 
+	c.publishEvent(ctx, task.Event{
+		Type:     "Completed",
+		TaskID:   t.ID,
+		WorkerID: workerStrID,
+	})
+
 	// Acknowledge task inside background context to ensure it acks if main ctx is cancelled right after process
 	c.acknowledge(context.Background(), msg.ID)
 }
 
-func (c *Consumer) handleTaskFailure(ctx context.Context, workerID int, t *task.Task, originalMsgID string, processErr error) {
+func (c *Consumer) handleTaskFailure(ctx context.Context, workerID int, t *task.Task, originalMsgID string, processErr error, workerStrID string) {
 	t.Error = processErr.Error()
 
 	if t.CurrentRetries < t.MaxRetries {
@@ -180,6 +194,12 @@ func (c *Consumer) handleTaskFailure(ctx context.Context, workerID int, t *task.
 	} else {
 		log.Printf("Worker %d: Task %s exceeded max retries. Moving to DLQ.", workerID, t.ID)
 		metrics.TasksDLQTotal.WithLabelValues(t.Type).Inc()
+
+		c.publishEvent(ctx, task.Event{
+			Type:     "DLQ",
+			TaskID:   t.ID,
+			WorkerID: workerStrID,
+		})
 
 		dlqStream := fmt.Sprintf("%s_dlq", c.stream)
 		err := c.enqueueTask(ctx, dlqStream, t)
@@ -225,4 +245,10 @@ func (c *Consumer) acknowledge(ctx context.Context, msgID string) {
 	if err != nil {
 		log.Printf("Failed to acknowledge message %s: %v", msgID, err)
 	}
+}
+
+func (c *Consumer) publishEvent(ctx context.Context, e task.Event) {
+	// Best effort tracking
+	b, _ := json.Marshal(e)
+	c.client.Publish(ctx, "buraq_events", string(b))
 }
