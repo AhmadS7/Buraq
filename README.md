@@ -2,6 +2,8 @@
 
 Buraq is a highly concurrent, resilient distributed task queue built with Go and Redis Streams. It provides robust capabilities out of the box for handling asynchronous jobs, scaling workers, and managing failures seamlessly through retries and a Dead-Letter Queue (DLQ).
 
+![Dashboard Preview](assets/tasks_chart.png)
+
 ## Features
 
 - **Concurrent Workers**: Spin up a pool of goroutines to process streams of work concurrently without blocking.
@@ -40,8 +42,13 @@ Buraq is a highly concurrent, resilient distributed task queue built with Go and
    ```
    This will initialize a mocked producer queueing tasks and a consumer pool processing them.
 
-3. **Check Metrics:**
-   Navigate to `http://localhost:2112/metrics` to visualize live Prometheus task outputs correctly emitting.
+3. **Check Metrics & Visualizations:**
+   Navigate to `http://localhost:2112/metrics` to visualize raw Prometheus metrics emitting correctly.
+
+   To visualize your data natively over time via Grafana, open `http://localhost:3000` (Login: `admin` / `admin`). Set up a Prometheus connection to `http://prometheus:9090`.
+
+   **See a demo setup below:**
+   ![Grafana Walkthrough](assets/grafana_demo.webp)
 
 ## Documentation
 
