@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"buraq/api"
 	"buraq/consumer"
 	"buraq/producer"
 	"buraq/task"
@@ -61,6 +62,14 @@ func main() {
 
 	// Initialize Producer
 	p := producer.New(rdb, streamName)
+
+	// API Server
+	apiSrv := api.NewServer(rdb, streamName)
+	go func() {
+		if err := apiSrv.Start(":8080"); err != nil {
+			log.Fatalf("API server failed: %v", err)
+		}
+	}()
 
 	// Start a goroutine to continuously produce mock tasks
 	go produceMockTasks(ctx, p)

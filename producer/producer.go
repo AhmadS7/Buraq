@@ -2,6 +2,7 @@ package producer
 
 import (
 	"context"
+	"encoding/json"
 
 	"buraq/task"
 
@@ -36,5 +37,14 @@ func (p *Producer) Produce(ctx context.Context, t *task.Task) (string, error) {
 		},
 	}
 
-	return p.client.XAdd(ctx, args).Result()
+	res, err := p.client.XAdd(ctx, args).Result()
+	if err == nil {
+		e := task.Event{
+			Type:   "Pending",
+			TaskID: t.ID,
+		}
+		b, _ := json.Marshal(e)
+		p.client.Publish(ctx, "buraq_events", string(b))
+	}
+	return res, err
 }
