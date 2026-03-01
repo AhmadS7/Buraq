@@ -1,8 +1,25 @@
 # Buraq Task Queue
 
+# Buraq Task Queue
+
 Buraq is a highly concurrent, resilient distributed task queue built with Go and Redis Streams. It provides robust capabilities out of the box for handling asynchronous jobs, scaling workers, and managing failures seamlessly through retries and a Dead-Letter Queue (DLQ).
 
+If a worker crashes or fails (returning an error), the task will automatically be re-queued up to 3 times before being pushed to an isolation Dead Letter Queue (`buraq:dlq`).
+
 ![Dashboard Preview](assets/tasks_chart.png)
+
+## Live Visual Dashboard
+
+Our Enterprise Buraq distribution includes a gorgeous Dark-Mode visual dashboard utilizing Next.js 15, Framer Motion, and Shadcn/UI.
+
+![Real-Time Benchmark Results](file:///C:/Users/chrom/.gemini/antigravity/brain/969ee229-3bf2-464c-bd07-185a84b13a68/benchmark_results_dashboard_1772367954607.png)
+
+![Buraq Dashboard Workflow Simulation](file:///C:/Users/chrom/.gemini/antigravity/brain/969ee229-3bf2-464c-bd07-185a84b13a68/benchmark_dashboard_video_1772367972521.webp)
+
+## Roadmap
+
+*   **Timeouts:** Define an expiration timeout to auto-fail hung executions.
+*   **Cron Logic:** Support delayed and recurring Cron Jobs.
 
 ## Features
 
