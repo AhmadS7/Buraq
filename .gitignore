@@ -1,5 +1,6 @@
 /docs/
 /.idea/
 /.vscode/
+/secret_docs/
 *.exe
 *.log
